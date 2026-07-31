@@ -114,15 +114,17 @@ def _serialize_task_timestamp(value: str) -> str:
     return parsed.isoformat().replace("+00:00", "Z")
 
 
-async def _sse_token_still_valid(request: Request, last_check: float) -> tuple[bool, float]:
+async def _sse_token_still_valid(
+    request: Request, last_check: float
+) -> tuple[bool, float]:
     now = asyncio.get_event_loop().time()
     if now - last_check < _SSE_REVERIFY_INTERVAL_S:
         return True, last_check
     try:
         user = await verify_credential_for_request(request)
     except Exception:
-        logger.debug("SSE credential recheck failed", exc_info=True)
-        return True, last_check
+        logger.debug("SSE credential recheck failed")
+        return False, now
     return (user is not None), now
 
 
@@ -210,7 +212,8 @@ def _sanitize_task_result_for_client(value: Any, *, ctx: ProjectContext | None) 
             if isinstance(item, str) and _is_local_abs_path_value(item):
                 continue
             if isinstance(item, list) and any(
-                isinstance(path, str) and _is_local_abs_path_value(path) for path in item
+                isinstance(path, str) and _is_local_abs_path_value(path)
+                for path in item
             ):
                 continue
         sanitized[key_text] = _sanitize_task_result_for_client(item, ctx=ctx)
@@ -273,7 +276,9 @@ def _remaining(limit: int | None, active: int) -> int | None:
 @router.get("/projects/{project}/tasks")
 async def list_project_tasks(project: str, user: dict = Depends(get_api_user)):
     """列出单个项目的任务。生产多节点路径由 OpenResty 路由到项目 home node。"""
-    ctx = await resolve_project_context(user=user, project_id=project, required_role="viewer")
+    ctx = await resolve_project_context(
+        user=user, project_id=project, required_role="viewer"
+    )
     mgr = get_task_manager()
     tasks = await run_in_threadpool(mgr.list_tasks_for_project, ctx)
     tasks.sort(key=lambda task: task.updated_at or task.created_at or "", reverse=True)
@@ -283,7 +288,9 @@ async def list_project_tasks(project: str, user: dict = Depends(get_api_user)):
 @router.get("/projects/{project}/tasks/limits")
 async def get_project_task_limits(project: str, user: dict = Depends(get_api_user)):
     """查询单个项目各队列的项目池和当前用户额度。"""
-    ctx = await resolve_project_context(user=user, project_id=project, required_role="viewer")
+    ctx = await resolve_project_context(
+        user=user, project_id=project, required_role="viewer"
+    )
     mgr = get_task_manager()
     eligible_user_count = await get_project_access().count_project_task_eligible_users(
         project_id=ctx.project_id,
@@ -315,9 +322,13 @@ async def get_project_task_limits(project: str, user: dict = Depends(get_api_use
 
 
 @router.delete("/projects/{project}/tasks/completed")
-async def clear_project_completed_tasks(project: str, user: dict = Depends(get_api_user)):
+async def clear_project_completed_tasks(
+    project: str, user: dict = Depends(get_api_user)
+):
     """删除单个项目的已完成任务记录。"""
-    ctx = await resolve_project_context(user=user, project_id=project, required_role="editor")
+    ctx = await resolve_project_context(
+        user=user, project_id=project, required_role="editor"
+    )
     mgr = get_task_manager()
 
     def clear_completed() -> int:
@@ -343,12 +354,18 @@ async def get_project_task(
     project: str,
     task_type: str,
     episode: int,
-    beat_num: int = Query(None, description="Beat 编号（single_video 等按 beat 区分的任务需要）"),
-    scope: str | None = Query(None, description="任务作用域（mode_key、grid_index 等）"),
+    beat_num: int = Query(
+        None, description="Beat 编号（single_video 等按 beat 区分的任务需要）"
+    ),
+    scope: str | None = Query(
+        None, description="任务作用域（mode_key、grid_index 等）"
+    ),
     user: dict = Depends(get_api_user),
 ):
     """查询单个项目内指定任务的状态。"""
-    ctx = await resolve_project_context(user=user, project_id=project, required_role="viewer")
+    ctx = await resolve_project_context(
+        user=user, project_id=project, required_role="viewer"
+    )
     mgr = get_task_manager()
     task = await run_in_threadpool(
         mgr.get_task_for_project,
@@ -379,7 +396,9 @@ async def stream_project_tasks(
     user: dict = Depends(get_api_user_or_query),
 ):
     """项目级 SSE 任务流。OpenResty 可按 project_id 路由到 home node。"""
-    ctx = await resolve_project_context(user=user, project_id=project, required_role="viewer")
+    ctx = await resolve_project_context(
+        user=user, project_id=project, required_role="viewer"
+    )
 
     async def event_generator():
         mgr = get_task_manager()
@@ -403,6 +422,20 @@ async def stream_project_tasks(
         }
 
         while True:
+            try:
+                still_valid, last_auth_check = await _sse_token_still_valid(
+                    request, last_auth_check
+                )
+            except Exception:
+                logger.debug("SSE credential recheck failed")
+                still_valid = False
+            if not still_valid:
+                yield {
+                    "event": "auth_revoked",
+                    "data": json.dumps({"reason": "unauthorized"}),
+                }
+                return
+
             tasks = await run_in_threadpool(mgr.list_tasks_for_project, ctx)
             seen: set[str] = set()
             for t in tasks:
@@ -433,14 +466,6 @@ async def stream_project_tasks(
                 }
                 last_heartbeat = now
 
-            still_valid, last_auth_check = await _sse_token_still_valid(request, last_auth_check)
-            if not still_valid:
-                yield {
-                    "event": "auth_revoked",
-                    "data": json.dumps({"reason": "credential revoked or expired"}),
-                }
-                return
-
             await asyncio.sleep(interval)
 
     return EventSourceResponse(event_generator())
@@ -458,7 +483,9 @@ async def stream_project_task(
     user: dict = Depends(get_api_user_or_query),
 ):
     """项目级单任务 SSE 端点。"""
-    ctx = await resolve_project_context(user=user, project_id=project, required_role="viewer")
+    ctx = await resolve_project_context(
+        user=user, project_id=project, required_role="viewer"
+    )
 
     async def event_generator():
         last_progress = -1.0
@@ -466,11 +493,17 @@ async def stream_project_task(
         last_auth_check = asyncio.get_event_loop().time()
         not_found_deadline = None
         while True:
-            still_valid, last_auth_check = await _sse_token_still_valid(request, last_auth_check)
+            try:
+                still_valid, last_auth_check = await _sse_token_still_valid(
+                    request, last_auth_check
+                )
+            except Exception:
+                logger.debug("SSE credential recheck failed")
+                still_valid = False
             if not still_valid:
                 yield {
                     "event": "auth_revoked",
-                    "data": json.dumps({"reason": "credential revoked or expired"}),
+                    "data": json.dumps({"reason": "unauthorized"}),
                 }
                 return
 
@@ -501,7 +534,9 @@ async def stream_project_task(
             not_found_deadline = None
 
             effective_status = _effective_task_status(task)
-            changed = (task.progress != last_progress) or (task.current_task != last_task)
+            changed = (task.progress != last_progress) or (
+                task.current_task != last_task
+            )
             is_terminal = effective_status in ("completed", "failed", "cancelled")
 
             if changed or is_terminal:
@@ -537,8 +572,12 @@ async def cancel_project_task_route(
     project: str,
     task_type: str,
     episode: int,
-    beat_num: int = Query(None, description="Beat 编号（single_video 等按 beat 区分的任务需要）"),
-    scope: str | None = Query(None, description="任务作用域（mode_key、grid_index 等）"),
+    beat_num: int = Query(
+        None, description="Beat 编号（single_video 等按 beat 区分的任务需要）"
+    ),
+    scope: str | None = Query(
+        None, description="任务作用域（mode_key、grid_index 等）"
+    ),
     user: dict = Depends(get_api_user),
 ):
     """终止单个项目内指定任务。项目任务后端通路；Ray 已废弃。
@@ -559,7 +598,9 @@ async def cancel_project_task_route(
     用户体感是"UI 显示已取消,但后端浪费一段算力"。
     扩到其他 runner 是后续 cleanup,加 `_await_with_cancel_watch` 包裹即可。
     """
-    ctx = await resolve_project_context(user=user, project_id=project, required_role="editor")
+    ctx = await resolve_project_context(
+        user=user, project_id=project, required_role="editor"
+    )
     logger.info(
         "[%s] EP%d cancel_project_task: type=%s, beat=%s, scope=%s",
         project,
