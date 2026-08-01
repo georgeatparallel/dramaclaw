@@ -9,6 +9,15 @@ from novelvideo.project_context import ProjectContext
 pytestmark = pytest.mark.m07
 
 
+def test_ingest_store_progress_milestones_are_strictly_increasing() -> None:
+    from novelvideo.cognee.store import INGEST_PROGRESS_MILESTONES
+
+    milestones = list(INGEST_PROGRESS_MILESTONES.values())
+    assert milestones == sorted(set(milestones))
+    assert milestones[0] > 0
+    assert milestones[-1] == 1.0
+
+
 def _ctx(tmp_path: Path) -> ProjectContext:
     return ProjectContext(
         project_id="proj_ingest",

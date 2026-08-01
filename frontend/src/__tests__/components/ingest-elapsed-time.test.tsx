@@ -31,7 +31,7 @@ describe("IngestElapsedTime", () => {
   });
 
   it("keeps advancing while the ingest indicator is mounted", () => {
-    render(<IngestElapsedTime />);
+    render(<IngestElapsedTime startedAtMs={Date.now()} />);
     expect(screen.getByText("Elapsed 00:00")).toBeInTheDocument();
 
     act(() => {
@@ -39,5 +39,17 @@ describe("IngestElapsedTime", () => {
     });
 
     expect(screen.getByText("Elapsed 01:05")).toBeInTheDocument();
+  });
+
+  it("continues from the persisted task start after remount", () => {
+    const startedAtMs = Date.parse("2026-07-31T23:55:00Z");
+    const first = render(<IngestElapsedTime startedAtMs={startedAtMs} />);
+    expect(screen.getByText("Elapsed 05:00")).toBeInTheDocument();
+
+    first.unmount();
+    vi.setSystemTime(new Date("2026-08-01T00:02:00Z"));
+    render(<IngestElapsedTime startedAtMs={startedAtMs} />);
+
+    expect(screen.getByText("Elapsed 07:00")).toBeInTheDocument();
   });
 });

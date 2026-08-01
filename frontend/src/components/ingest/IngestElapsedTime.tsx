@@ -11,23 +11,28 @@ export function formatIngestElapsedTime(totalSeconds: number): string {
   const mm = String(minutes).padStart(2, "0");
   const ss = String(seconds).padStart(2, "0");
 
-  return hours > 0 ? `${String(hours).padStart(2, "0")}:${mm}:${ss}` : `${mm}:${ss}`;
+  return hours > 0
+    ? `${String(hours).padStart(2, "0")}:${mm}:${ss}`
+    : `${mm}:${ss}`;
 }
 
-/** A live elapsed-time indicator mounted only while graph ingest is active. */
-export function IngestElapsedTime() {
+/** A live elapsed-time indicator anchored to the persisted task start time. */
+export function IngestElapsedTime({ startedAtMs }: { startedAtMs: number }) {
   const { t } = useTranslation();
-  const [startedAt] = useState(() => Date.now());
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(() =>
+    Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)),
+  );
 
   useEffect(() => {
     const update = () => {
-      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+      setElapsedSeconds(
+        Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)),
+      );
     };
     update();
     const interval = window.setInterval(update, 1000);
     return () => window.clearInterval(interval);
-  }, [startedAt]);
+  }, [startedAtMs]);
 
   return (
     <span className="shrink-0 font-mono tabular-nums text-muted-foreground/80">
