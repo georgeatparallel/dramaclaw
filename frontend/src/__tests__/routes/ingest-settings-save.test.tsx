@@ -84,6 +84,7 @@ beforeAll(async () => {
             pastePlaceholder: "Paste novel text here",
             startIngest: "Start Import",
             processing: "Processing...",
+            elapsed: "Elapsed {{time}}",
             status: {
               uploaded: "Uploaded",
               importing: "Importing",

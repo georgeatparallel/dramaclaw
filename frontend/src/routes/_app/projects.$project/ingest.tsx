@@ -36,6 +36,7 @@ import {
 import { FormatCheckDetailsDialog } from "@/components/ingest/FormatCheckDetailsDialog";
 import { NovelFormatDialog } from "@/components/ingest/NovelFormatDialog";
 import { KnowledgeGraphVisualization } from "@/components/ingest/KnowledgeGraphVisualization";
+import { IngestElapsedTime } from "@/components/ingest/IngestElapsedTime";
 import { useStyles } from "@/lib/queries/styles";
 import { useCancelTask, useTasks } from "@/lib/queries/tasks";
 import { useGenerationCreditCost } from "@/lib/queries/generation-credit-cost";
@@ -764,6 +765,7 @@ function UploadedFileCard({
             <span className="min-w-0 flex-1 truncate">
               {currentTask || t("ingest.processing")}
             </span>
+            <IngestElapsedTime />
             <span className="shrink-0 font-mono tabular-nums">{percent}%</span>
           </div>
           <Progress value={percent} />
